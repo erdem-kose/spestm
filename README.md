@@ -1,4 +1,4 @@
-# SPeST: Spectral Estimation Library
+# SPeSTM: Spectral Estimation Library
 
 
 In readme, for usage example I will inspect the popular spectral estimation methods with audio file consists G5 note with trumpet. Each of models will be shown in whole and short-time structure. My personal favorite is Min-Norm method, because it gives Autoregressive parameters and a good Power Spectral Density at the same time.
