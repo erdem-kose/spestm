@@ -1,8 +1,3 @@
-
-\begin{flushright}
-Erdem KÖSE
-\end{flushright}
-
 # SPeST: Spectral Estimation Library
 
 
@@ -336,7 +331,7 @@ colorbar;
 ```
 
 
-![](readme_images/)
+![figure_10.png](readme_images/figure_10.png)
 
 ## Autoregressive (Burg) PSD
 
@@ -355,7 +350,7 @@ grid minor;
 ```
 
 
-![](readme_images/)
+![figure_11.png](readme_images/figure_11.png)
 
 
 ```matlab:Code
@@ -369,7 +364,7 @@ colorbar;
 ```
 
 
-![](readme_images/)
+![figure_12.png](readme_images/figure_12.png)
 
 ## Autoregressive Moving Average PSD
 
@@ -437,7 +432,7 @@ grid minor;
 ```
 
 
-![](readme_images/)
+![figure_13.png](readme_images/figure_13.png)
 
 
 ```matlab:Code
@@ -451,7 +446,7 @@ colorbar;
 ```
 
 
-![](readme_images/)
+![figure_14.png](readme_images/figure_14.png)
 
 ## MUSIC PSD
 
@@ -470,7 +465,7 @@ grid minor;
 ```
 
 
-![](readme_images/)
+![figure_15.png](readme_images/figure_15.png)
 
 
 ```matlab:Code
@@ -484,7 +479,7 @@ colorbar;
 ```
 
 
-![](readme_images/)
+![figure_16.png](readme_images/figure_16.png)
 
 ## Min-Norm PSD
 
@@ -503,7 +498,7 @@ grid minor;
 ```
 
 
-![](readme_images/)
+![figure_17.png](readme_images/figure_17.png)
 
 
 ```matlab:Code
@@ -517,7 +512,7 @@ colorbar;
 ```
 
 
-![](readme_images/)
+![figure_18.png](readme_images/figure_18.png)
 
 # Comparison of All PSDs
 
@@ -542,5 +537,5 @@ grid on;
 ```
 
 
-![](readme_images/)
+![figure_19.png](readme_images/figure_19.png)
 
