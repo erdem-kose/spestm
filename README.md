@@ -1,8 +1,80 @@
 # SPeSTM: Spectral Estimation Library
 
+SPeSTM is a small MATLAB class (`spestm_lib`) that collects the most common
+power-spectral-density (PSD) estimators behind a single, uniform interface. You
+configure one object with your signal and a few model orders, call `init()`,
+and then ask it for whichever estimate you need. Every estimator returns the PSD
+together with its frequency axis in Hz.
 
-In readme, for usage example I will inspect the popular spectral estimation methods with audio file consists G5 note with trumpet. Each of models will be shown in whole and short-time structure. My personal favorite is Min-Norm method, because it gives Autoregressive parameters and a good Power Spectral Density at the same time.
+## Implemented estimators
 
+| Method | Call | Family |
+| --- | --- | --- |
+| Periodogram | `psd_periodogram` | Non-parametric |
+| Blackman–Tukey | `psd_blackmantukey` | Non-parametric |
+| Capon (minimum variance) | `psd_capon` | Filter-bank |
+| Autoregressive – Yule-Walker | `psd_aryulewalker` | Parametric (AR) |
+| Autoregressive – Modified Covariance | `psd_armodcov` | Parametric (AR) |
+| Autoregressive – Burg | `psd_arburg` | Parametric (AR) |
+| Autoregressive Moving Average | `psd_arma` | Parametric (ARMA) |
+| MUSIC | `psd_music` | Subspace |
+| Min-Norm | `psd_minnorm` | Subspace |
+
+## Requirements
+
+- MATLAB (developed and tested with R2023b)
+- Signal Processing Toolbox (uses `window`, `xcorr`, and `arburg`)
+
+## Repository contents
+
+- `spestm_lib.m` — the estimator library (the `spestm_lib` class).
+- `main.mlx` — the MATLAB Live Script this README is generated from.
+- `trumpet-G5.wav` — example audio (a G5 note played on a trumpet).
+- `readme_images/` — figures used in this document.
+
+## Quick start
+
+```matlab
+[x,fs] = audioread('trumpet-G5.wav');
+
+obj = spestm_lib();
+obj.x = x - mean(x,1);   % input, size [N, d] (one column per channel)
+obj.fs = fs;             % sample rate
+obj.f_range = 'half';    % 'half' for [0, fs/2] or 'full' for [0, fs]
+obj.window_type = 'hann';
+obj.p = 24;              % AR order
+obj.q = 4;               % MA order
+obj.M = 96;              % subspace size
+obj = obj.init();        % must be called after setting properties
+
+[psd, f] = obj.psd_minnorm();   % f is in Hz
+semilogy(f, psd);
+```
+
+## Properties
+
+| Property | Default | Meaning |
+| --- | --- | --- |
+| `x` | `[]` | Input signal, size `[N, d]` (`d` channels processed independently). |
+| `fs` | `[]` | Sample rate; if empty, `init()` sets it to `1/N`. |
+| `p` | `12` | AR order / lower noise-subspace eigenvector limit. |
+| `q` | `2` | MA order. |
+| `g` | `2` | Capon model order. |
+| `M` | `[]` | Upper noise-subspace eigenvector limit; if empty, set to `N`. |
+| `Nf` | `[]` | Number of frequency points; if empty, `2^nextpow2(N)`. |
+| `window_type` | `'rectwin'` | Any [`window`](https://www.mathworks.com/help/signal/ref/window.html) name. |
+| `f_range` | `'full'` | `'full'` for `[0, fs]` or `'half'` for `[0, fs/2]`. |
+
+> Set the properties first, then call `init()` — it derives `N`, `d`, the
+> frequency axis, and the steering-vector matrix from them.
+
+---
+
+The rest of this document is a worked tutorial. It inspects the popular spectral
+estimation methods on the example audio (a G5 note on a trumpet), showing each
+model in both whole-signal and short-time form. My personal favorite is the
+Min-Norm method, because it gives the autoregressive parameters and a good Power
+Spectral Density at the same time.
 
 # Data Load
 
@@ -24,7 +96,13 @@ end
 
 ### Short-time Partitioning
 
-<img src="https://latex.codecogs.com/gif.latex?\begin{array}{l}&space;N_{\textrm{partition}}&space;=\textrm{ceil}\left(\frac{N}{\textrm{Partition}\;\textrm{Count}}\right),N_{\textrm{new}}&space;=\textrm{Partition}\;\textrm{Count}*N_{\textrm{partition}}&space;\\&space;x_{\textrm{new}}&space;=\left\lbrack&space;\begin{array}{cc}&space;x&space;&&space;\textrm{zerox}\left(N_{\textrm{new}}&space;-N,d\right)&space;\end{array}\right\rbrack&space;\\&space;x_{\textrm{shorttime}}&space;=\textrm{reshape}\left(x,\left\lbrack&space;N_{\textrm{partition}}&space;,\textrm{Partition}\;\textrm{Count}\right\rbrack&space;\right)&space;\end{array}"/>
+$$
+\begin{aligned}
+N_\text{partition} &= \left\lceil \frac{N}{N_\text{count}} \right\rceil, \qquad N_\text{new} = N_\text{count} \cdot N_\text{partition} \\
+x_\text{new} &= \begin{bmatrix} x & \mathbf{0}_{(N_\text{new}-N)\times d} \end{bmatrix} \\
+x_\text{shorttime} &= \operatorname{reshape}\!\left( x_\text{new},\ [\,N_\text{partition},\ N_\text{count}\,] \right)
+\end{aligned}
+$$
 
 
 ```matlab:Code
@@ -50,7 +128,7 @@ grid minor;
 ```
 
 
-![figure_0.png](readme_images/figure_0.png)
+![figure_0.svg](readme_images/figure_0.svg)
 
 # Spectral Estimation Library
 
@@ -84,17 +162,17 @@ spestm_obj_st=spestm_obj_st.init();
 ## Periodogram PSD
 
 
-The most basic one is Periodogram, it's just amplitude spectrum of autocorrelation function <img src="https://latex.codecogs.com/gif.latex?\inline&space;r_X&space;\left\lbrack&space;k\right\rbrack"/>'s Fouirer transform.
+The most basic one is Periodogram, it's just amplitude spectrum of autocorrelation function $`r_X[k]`$'s Fourier transform.
 
 
 
-<img src="https://latex.codecogs.com/gif.latex?x_w&space;\left\lbrack&space;n\right\rbrack&space;=w\left\lbrack&space;n\right\rbrack&space;x\left\lbrack&space;n\right\rbrack"/>
+$$x_w[n] = w[n]\,x[n]$$
 
 
-<img src="https://latex.codecogs.com/gif.latex?r_X&space;\left\lbrack&space;k\right\rbrack&space;=\frac{1}{f_{s\;}&space;}\sum_{n=0}^{N-1}&space;x_w&space;\left\lbrack&space;n\right\rbrack&space;\bar{x_w&space;}&space;\left\lbrack&space;n-k\right\rbrack"/>
+$$r_X[k] = \frac{1}{f_s} \sum_{n=0}^{N-1} x_w[n]\,\overline{x_w}[n-k]$$
 
 
-<img src="https://latex.codecogs.com/gif.latex?P_X^{\textrm{per}}&space;\left(f\right)=\left|\;\sum_{k=0}^{N-1}&space;r_X&space;\left\lbrack&space;k\right\rbrack&space;e^{-\textrm{j2}\pi&space;\frac{f}{f_s&space;}n}&space;\right|"/>
+$$P_X^\text{per}(f) = \left| \sum_{k=0}^{N-1} r_X[k]\, e^{-j2\pi \frac{f}{f_s} k} \right|$$
 
 
 ```matlab:Code
@@ -112,7 +190,7 @@ grid minor;
 ```
 
 
-![figure_1.png](readme_images/figure_1.png)
+![figure_1.svg](readme_images/figure_1.svg)
 
 
 ```matlab:Code
@@ -126,22 +204,22 @@ colorbar;
 ```
 
 
-![figure_2.png](readme_images/figure_2.png)
+![figure_2.svg](readme_images/figure_2.svg)
 
 ## Blackman-Tukey PSD
 
 
-It's the variant of Periodogram, but differs in windowing. We window <img src="https://latex.codecogs.com/gif.latex?\inline&space;R_X&space;\left\lbrack&space;k\right\rbrack"/> instead of <img src="https://latex.codecogs.com/gif.latex?\inline&space;x\left\lbrack&space;n\right\rbrack"/>.
+It's the variant of Periodogram, but differs in windowing. We window $`r_X[k]`$ instead of $`x[n]`$.
 
 
 
-<img src="https://latex.codecogs.com/gif.latex?r_X&space;\left\lbrack&space;k\right\rbrack&space;=\frac{1}{f_{s\;}&space;}\sum_{n=0}^{N-1}&space;x\left\lbrack&space;n\right\rbrack&space;\bar{x}&space;\left\lbrack&space;n-k\right\rbrack"/>
+$$r_X[k] = \frac{1}{f_s} \sum_{n=0}^{N-1} x[n]\,\overline{x}[n-k]$$
 
 
-<img src="https://latex.codecogs.com/gif.latex?r_{X_w&space;}&space;\left\lbrack&space;k\right\rbrack&space;=w\left\lbrack&space;k\right\rbrack&space;R_X&space;\left\lbrack&space;k\right\rbrack"/>
+$$r_{X_w}[k] = w[k]\, r_X[k]$$
 
 
-<img src="https://latex.codecogs.com/gif.latex?P_X^{\textrm{bt}}&space;\left(f\right)=\left|\;\sum_{k=0}^{N-1}&space;r_{X_w&space;}&space;\left\lbrack&space;k\right\rbrack&space;e^{-\textrm{j2}\pi&space;\frac{f}{f_s&space;}n}&space;\right|"/>
+$$P_X^\text{bt}(f) = \left| \sum_{k=0}^{N-1} r_{X_w}[k]\, e^{-j2\pi \frac{f}{f_s} k} \right|$$
 
 
 ```matlab:Code
@@ -159,7 +237,7 @@ grid minor;
 ```
 
 
-![figure_3.png](readme_images/figure_3.png)
+![figure_3.svg](readme_images/figure_3.svg)
 
 
 ```matlab:Code
@@ -173,25 +251,32 @@ colorbar;
 ```
 
 
-![figure_4.png](readme_images/figure_4.png)
+![figure_4.svg](readme_images/figure_4.svg)
 
 ## Capon PSD
 
 
-From now on, we don't mention about windowing. We will use input signal directly. Capon PSD, is one of the best because of detail parameter <img src="https://latex.codecogs.com/gif.latex?\inline&space;g"/>. If <img src="https://latex.codecogs.com/gif.latex?\inline&space;g"/> increases, details of noisy input signal can be observed clearly; but it has a limit naturally.
+From now on, we don't mention about windowing. We will use input signal directly. Capon PSD, is one of the best because of detail parameter $`g`$. If $`g`$ increases, details of noisy input signal can be observed clearly; but it has a limit naturally.
 
 
 
-<img src="https://latex.codecogs.com/gif.latex?r_X&space;\left\lbrack&space;k\right\rbrack&space;=\frac{1}{f_{s\;}&space;}\sum_{n=0}^{N-1}&space;x\left\lbrack&space;n\right\rbrack&space;\bar{x}&space;\left\lbrack&space;n-k\right\rbrack"/>
+$$r_X[k] = \frac{1}{f_s} \sum_{n=0}^{N-1} x[n]\,\overline{x}[n-k]$$
 
 
-<img src="https://latex.codecogs.com/gif.latex?R_X&space;=\left\lbrack&space;\begin{array}{cccc}&space;r_X&space;\left\lbrack&space;0\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;-1\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;-\left(p-1\right)\right\rbrack&space;\\&space;r_X&space;\left\lbrack&space;1\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;0\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;-\left(p-2\right)\right\rbrack&space;\\&space;\vdots&space;&space;&&space;\vdots&space;&space;&&space;\ddots&space;&space;&&space;\vdots&space;\\&space;r_X&space;\left\lbrack&space;p-1\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;p-2\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;0\right\rbrack&space;&space;\end{array}\right\rbrack"/>
+$$
+R_X = \begin{bmatrix}
+r_X[0] & r_X[-1] & \cdots & r_X[-(p-1)] \\
+r_X[1] & r_X[0] & \cdots & r_X[-(p-2)] \\
+\vdots & \vdots & \ddots & \vdots \\
+r_X[p-1] & r_X[p-2] & \cdots & r_X[0]
+\end{bmatrix}
+$$
 
 
-<img src="https://latex.codecogs.com/gif.latex?{\mathit{\mathbf{e}}}_{\textrm{vect}}&space;={\left\lbrack&space;\begin{array}{cccc}&space;1&space;&&space;e^{-\textrm{j2}\pi&space;f\;}&space;&space;&&space;\cdots&space;&space;&&space;e^{-\textrm{j2}\pi&space;f\left(p-1\right)\;}&space;&space;\end{array}\right\rbrack&space;}^T"/>
+$$\mathbf{e}_\text{vect} = \begin{bmatrix} 1 & e^{-j2\pi f} & \cdots & e^{-j2\pi f(p-1)} \end{bmatrix}^T$$
 
 
-<img src="https://latex.codecogs.com/gif.latex?P_X^{\textrm{capon}}&space;\left(f\right)=\left|\frac{{\mathit{\mathbf{e}}}_{\textrm{vect}}^{\mathit{\mathbf{T}}}&space;\left(R_X^{-\left(g-1\right)}&space;\right){\mathit{\mathbf{e}}}_{\textrm{vect}}&space;}{\;{\mathit{\mathbf{e}}}_{\textrm{vect}}^{\mathit{\mathbf{T}}}&space;\left(R_X^{-\left(g\right)}&space;\right){\mathit{\mathbf{e}}}_{\textrm{vect}}&space;}\right|"/>
+$$P_X^\text{capon}(f) = \left| \frac{\mathbf{e}_\text{vect}^{T}\, R_X^{-(g-1)}\, \mathbf{e}_\text{vect}}{\mathbf{e}_\text{vect}^{T}\, R_X^{-g}\, \mathbf{e}_\text{vect}} \right|$$
 
 
 ```matlab:Code
@@ -209,7 +294,7 @@ grid minor;
 ```
 
 
-![figure_5.png](readme_images/figure_5.png)
+![figure_5.svg](readme_images/figure_5.svg)
 
 
 ```matlab:Code
@@ -223,32 +308,55 @@ colorbar;
 ```
 
 
-![figure_6.png](readme_images/figure_6.png)
+![figure_6.svg](readme_images/figure_6.svg)
 
 ## Autoregressive (Yule-Walker) PSD
 
-<img src="https://latex.codecogs.com/gif.latex?r_X&space;\left\lbrack&space;k\right\rbrack&space;=\frac{1}{f_{s\;}&space;}\sum_{n=0}^{N-1}&space;x\left\lbrack&space;n\right\rbrack&space;\bar{x}&space;\left\lbrack&space;n-k\right\rbrack"/>
+$$r_X[k] = \frac{1}{f_s} \sum_{n=0}^{N-1} x[n]\,\overline{x}[n-k]$$
 
 
-<img src="https://latex.codecogs.com/gif.latex?R_X&space;=\left\lbrack&space;\begin{array}{cccc}&space;r_X&space;\left\lbrack&space;0\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;-1\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;-\left(p-1\right)\right\rbrack&space;\\&space;r_X&space;\left\lbrack&space;1\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;0\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;-\left(p-2\right)\right\rbrack&space;\\&space;\vdots&space;&space;&&space;\vdots&space;&space;&&space;\ddots&space;&space;&&space;\vdots&space;\\&space;r_X&space;\left\lbrack&space;p-1\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;p-2\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;0\right\rbrack&space;&space;\end{array}\right\rbrack"/>
-
-
-
-Solution of the equation above will give parameter vector <img src="https://latex.codecogs.com/gif.latex?\inline&space;a"/>.
-
-
-
-<img src="https://latex.codecogs.com/gif.latex?\left\lbrack&space;\begin{array}{cccc}&space;r_X&space;\left\lbrack&space;0\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;-1\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;-\left(p-1\right)\right\rbrack&space;\\&space;r_X&space;\left\lbrack&space;1\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;0\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;-\left(p-2\right)\right\rbrack&space;\\&space;\vdots&space;&space;&&space;\vdots&space;&space;&&space;\ddots&space;&space;&&space;\vdots&space;\\&space;r_X&space;\left\lbrack&space;p-1\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;p-2\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;0\right\rbrack&space;&space;\end{array}\right\rbrack&space;\left\lbrack&space;\begin{array}{c}&space;a\left\lbrack&space;1\right\rbrack&space;\\&space;a\left\lbrack&space;2\right\rbrack&space;\\&space;\vdots&space;\\&space;a\left\lbrack&space;p\right\rbrack&space;&space;\end{array}\right\rbrack&space;=-\left\lbrack&space;\begin{array}{c}&space;r_X&space;\left\lbrack&space;1\right\rbrack&space;\\&space;r_X&space;\left\lbrack&space;2\right\rbrack&space;\\&space;\vdots&space;\\&space;r_X&space;\left\lbrack&space;p\right\rbrack&space;&space;\end{array}\right\rbrack"/>
-
-
-
-Parameter <img src="https://latex.codecogs.com/gif.latex?\inline&space;\sigma&space;{\;}^2"/> can be obtained by after obtaining parameter vector <img src="https://latex.codecogs.com/gif.latex?\inline&space;\mathit{\mathbf{a}}={\left\lbrack&space;\begin{array}{cccc}
-1&space;&&space;a\left\lbrack&space;1\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;a\left\lbrack&space;p\right\rbrack&space;
-\end{array}\right\rbrack&space;}^T"/>
+$$
+R_X = \begin{bmatrix}
+r_X[0] & r_X[-1] & \cdots & r_X[-(p-1)] \\
+r_X[1] & r_X[0] & \cdots & r_X[-(p-2)] \\
+\vdots & \vdots & \ddots & \vdots \\
+r_X[p-1] & r_X[p-2] & \cdots & r_X[0]
+\end{bmatrix}
+$$
 
 
 
-<img src="https://latex.codecogs.com/gif.latex?\left\lbrack&space;\begin{array}{cccc}&space;r_X&space;\left\lbrack&space;0\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;-1\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;-\left(p\right)\right\rbrack&space;\\&space;r_X&space;\left\lbrack&space;1\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;0\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;-\left(p-1\right)\right\rbrack&space;\\&space;\vdots&space;&space;&&space;\vdots&space;&space;&&space;\ddots&space;&space;&&space;\vdots&space;\\&space;r_X&space;\left\lbrack&space;p\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;p-1\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;0\right\rbrack&space;&space;\end{array}\right\rbrack&space;\left\lbrack&space;\begin{array}{c}&space;1\\&space;a\left\lbrack&space;1\right\rbrack&space;\\&space;\vdots&space;\\&space;a\left\lbrack&space;p\right\rbrack&space;&space;\end{array}\right\rbrack&space;=-\left\lbrack&space;\begin{array}{c}&space;\sigma&space;{\;}^2&space;\\&space;0\\&space;\vdots&space;\\&space;0&space;\end{array}\right\rbrack"/>
+Solution of the equation above will give parameter vector $`a`$.
+
+
+
+$$
+\begin{bmatrix}
+r_X[0] & r_X[-1] & \cdots & r_X[-(p-1)] \\
+r_X[1] & r_X[0] & \cdots & r_X[-(p-2)] \\
+\vdots & \vdots & \ddots & \vdots \\
+r_X[p-1] & r_X[p-2] & \cdots & r_X[0]
+\end{bmatrix}
+\begin{bmatrix} a[1] \\ a[2] \\ \vdots \\ a[p] \end{bmatrix}
+= -\begin{bmatrix} r_X[1] \\ r_X[2] \\ \vdots \\ r_X[p] \end{bmatrix}
+$$
+
+
+
+Parameter $`\sigma^2`$ can be obtained by after obtaining parameter vector $`\mathbf{a} = \begin{bmatrix} 1 & a[1] & \cdots & a[p] \end{bmatrix}^T`$
+
+
+
+$$
+\begin{bmatrix}
+r_X[0] & r_X[-1] & \cdots & r_X[-p] \\
+r_X[1] & r_X[0] & \cdots & r_X[-(p-1)] \\
+\vdots & \vdots & \ddots & \vdots \\
+r_X[p] & r_X[p-1] & \cdots & r_X[0]
+\end{bmatrix}
+\begin{bmatrix} 1 \\ a[1] \\ \vdots \\ a[p] \end{bmatrix}
+= \begin{bmatrix} \sigma^2 \\ 0 \\ \vdots \\ 0 \end{bmatrix}
+$$
 
 
 
@@ -256,10 +364,10 @@ Then using these parameters
 
 
 
-<img src="https://latex.codecogs.com/gif.latex?P_X^{\textrm{ARyw}}&space;\left(f\right)=\frac{\sigma&space;{\;}^2&space;}{\;\left|{\mathit{\mathbf{e}}}_{\textrm{vect}}^{\mathit{\mathbf{T}}}&space;\mathit{\mathbf{a}}{\left|\right.}^2&space;\right.}"/>
+$$P_X^\text{ARyw}(f) = \frac{\sigma^2}{\left| \mathbf{e}_\text{vect}^{T} \mathbf{a} \right|^2}$$
 
 
-<img src="https://latex.codecogs.com/gif.latex?{\mathit{\mathbf{e}}}_{\textrm{vect}}&space;={\left\lbrack&space;\begin{array}{cccc}&space;1&space;&&space;e^{-\textrm{j2}\pi&space;f\;}&space;&space;&&space;\cdots&space;&space;&&space;e^{-\textrm{j2}\pi&space;\textrm{fp}\;}&space;&space;\end{array}\right\rbrack&space;}^T"/> 
+$$\mathbf{e}_\text{vect} = \begin{bmatrix} 1 & e^{-j2\pi f} & \cdots & e^{-j2\pi f p} \end{bmatrix}^T$$ 
 
 
 ```matlab:Code
@@ -277,7 +385,7 @@ grid minor;
 ```
 
 
-![figure_7.png](readme_images/figure_7.png)
+![figure_7.svg](readme_images/figure_7.svg)
 
 
 ```matlab:Code
@@ -291,7 +399,7 @@ colorbar;
 ```
 
 
-![figure_8.png](readme_images/figure_8.png)
+![figure_8.svg](readme_images/figure_8.svg)
 
 ## Autoregressive (Modified Covariance) PSD
 
@@ -317,7 +425,7 @@ grid minor;
 ```
 
 
-![figure_9.png](readme_images/figure_9.png)
+![figure_9.svg](readme_images/figure_9.svg)
 
 
 ```matlab:Code
@@ -331,7 +439,7 @@ colorbar;
 ```
 
 
-![figure_10.png](readme_images/figure_10.png)
+![figure_10.svg](readme_images/figure_10.svg)
 
 ## Autoregressive (Burg) PSD
 
@@ -350,7 +458,7 @@ grid minor;
 ```
 
 
-![figure_11.png](readme_images/figure_11.png)
+![figure_11.svg](readme_images/figure_11.svg)
 
 
 ```matlab:Code
@@ -364,57 +472,73 @@ colorbar;
 ```
 
 
-![figure_12.png](readme_images/figure_12.png)
+![figure_12.svg](readme_images/figure_12.svg)
 
 ## Autoregressive Moving Average PSD
 
-<img src="https://latex.codecogs.com/gif.latex?r_X&space;\left\lbrack&space;k\right\rbrack&space;=\frac{1}{f_{s\;}&space;}\sum_{n=0}^{N-1}&space;x\left\lbrack&space;n\right\rbrack&space;\bar{x}&space;\left\lbrack&space;n-k\right\rbrack"/>
+$$r_X[k] = \frac{1}{f_s} \sum_{n=0}^{N-1} x[n]\,\overline{x}[n-k]$$
 
 
-<img src="https://latex.codecogs.com/gif.latex?R_X^{\textrm{modified}}&space;=\left\lbrack&space;\begin{array}{cccc}&space;r_X&space;\left\lbrack&space;q+1\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;q\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;q-\left(p-2\right)\right\rbrack&space;\\&space;r_X&space;\left\lbrack&space;q+2\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;q+1\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;q-\left(p-3\right)\right\rbrack&space;\\&space;\vdots&space;&space;&&space;\vdots&space;&space;&&space;\ddots&space;&space;&&space;\vdots&space;\\&space;r_X&space;\left\lbrack&space;q+p\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;q+p-1\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;q+1\right\rbrack&space;&space;\end{array}\right\rbrack"/>
-
-
-
-Solution of the equation above will give parameter vector <img src="https://latex.codecogs.com/gif.latex?\inline&space;a"/>.
-
-
-
-<img src="https://latex.codecogs.com/gif.latex?\left\lbrack&space;\begin{array}{cccc}&space;r_X&space;\left\lbrack&space;q+1\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;q\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;q-\left(p-2\right)\right\rbrack&space;\\&space;r_X&space;\left\lbrack&space;q+2\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;q+1\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;q-\left(p-3\right)\right\rbrack&space;\\&space;\vdots&space;&space;&&space;\vdots&space;&space;&&space;\ddots&space;&space;&&space;\vdots&space;\\&space;r_X&space;\left\lbrack&space;q+p\right\rbrack&space;&space;&&space;r_X&space;\left\lbrack&space;q+p-1\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;r_X&space;\left\lbrack&space;q+1\right\rbrack&space;&space;\end{array}\right\rbrack&space;\left\lbrack&space;\begin{array}{c}&space;a\left\lbrack&space;1\right\rbrack&space;\\&space;a\left\lbrack&space;2\right\rbrack&space;\\&space;\vdots&space;\\&space;a\left\lbrack&space;p\right\rbrack&space;&space;\end{array}\right\rbrack&space;=-\left\lbrack&space;\begin{array}{c}&space;r_X&space;\left\lbrack&space;q+2\right\rbrack&space;\\&space;r_X&space;\left\lbrack&space;q+3\right\rbrack&space;\\&space;\vdots&space;\\&space;r_X&space;\left\lbrack&space;q+p+1\right\rbrack&space;&space;\end{array}\right\rbrack"/>
-
-
-
-Filtering input signal <img src="https://latex.codecogs.com/gif.latex?\inline&space;x"/> with parameter vector <img src="https://latex.codecogs.com/gif.latex?\inline&space;\mathit{\mathbf{a}}={\left\lbrack&space;\begin{array}{cccc}
-1&space;&&space;a\left\lbrack&space;1\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;a\left\lbrack&space;p\right\rbrack&space;
-\end{array}\right\rbrack&space;}^T"/>
+$$
+R_X^\text{modified} = \begin{bmatrix}
+r_X[q+1] & r_X[q] & \cdots & r_X[q-(p-2)] \\
+r_X[q+2] & r_X[q+1] & \cdots & r_X[q-(p-3)] \\
+\vdots & \vdots & \ddots & \vdots \\
+r_X[q+p] & r_X[q+p-1] & \cdots & r_X[q+1]
+\end{bmatrix}
+$$
 
 
 
-<img src="https://latex.codecogs.com/gif.latex?x_f&space;\left\lbrack&space;n\right\rbrack&space;=\sum_{k=0}^p&space;x\left\lbrack&space;n\right\rbrack&space;a\left\lbrack&space;k-n\right\rbrack"/>
+Solution of the equation above will give parameter vector $`a`$.
 
 
 
-Find parameter vector <img src="https://latex.codecogs.com/gif.latex?\inline&space;{\mathit{\mathbf{a}}}_{\mathit{\mathbf{f}}}&space;={\left\lbrack&space;\begin{array}{cccc}
-1&space;&&space;a_f&space;\left\lbrack&space;1\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;a_f&space;\left\lbrack&space;p\right\rbrack&space;
-\end{array}\right\rbrack&space;}^T"/> for  <img src="https://latex.codecogs.com/gif.latex?\inline&space;x_f&space;\left\lbrack&space;n\right\rbrack"/> with Yule-Walker equations
+$$
+R_X^\text{modified}
+\begin{bmatrix} a[1] \\ a[2] \\ \vdots \\ a[p] \end{bmatrix}
+= -\begin{bmatrix} r_X[q+2] \\ r_X[q+3] \\ \vdots \\ r_X[q+p+1] \end{bmatrix}
+$$
+
+
+
+Filtering input signal $`x`$ with parameter vector $`\mathbf{a} = \begin{bmatrix} 1 & a[1] & \cdots & a[p] \end{bmatrix}^T`$
+
+
+
+$$x_f[n] = \sum_{k=0}^{p} a[k]\, x[n-k]$$
+
+
+
+Find parameter vector $`\mathbf{a}_f = \begin{bmatrix} 1 & a_f[1] & \cdots & a_f[p] \end{bmatrix}^T`$ for  $`x_f[n]`$ with Yule-Walker equations
 
 
 
 
-Solution of the equation above will give parameter vector <img src="https://latex.codecogs.com/gif.latex?\inline&space;\mathit{\mathbf{b}}"/>.
+Solution of the equation above will give parameter vector $`\mathbf{b}`$.
 
 
 
-<img src="https://latex.codecogs.com/gif.latex?\left\lbrack&space;\begin{array}{cccc}&space;a_f&space;\left\lbrack&space;0\right\rbrack&space;&space;&&space;a_f&space;\left\lbrack&space;1\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;a_f&space;\left\lbrack&space;-\left(q-1\right)\right\rbrack&space;\\&space;a_f&space;\left\lbrack&space;1\right\rbrack&space;&space;&&space;a_f&space;\left\lbrack&space;0\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;a_f&space;\left\lbrack&space;-\left(q-2\right)\right\rbrack&space;\\&space;\vdots&space;&space;&&space;\vdots&space;&space;&&space;\ddots&space;&space;&&space;\vdots&space;\\&space;a_f&space;\left\lbrack&space;q-1\right\rbrack&space;&space;&&space;a_f&space;\left\lbrack&space;q-2\right\rbrack&space;&space;&&space;\cdots&space;&space;&&space;a_f&space;\left\lbrack&space;0\right\rbrack&space;&space;\end{array}\right\rbrack&space;\left\lbrack&space;\begin{array}{c}&space;b\left\lbrack&space;1\right\rbrack&space;\\&space;b\left\lbrack&space;2\right\rbrack&space;\\&space;\vdots&space;\\&space;b\left\lbrack&space;q\right\rbrack&space;&space;\end{array}\right\rbrack&space;=-\left\lbrack&space;\begin{array}{c}&space;a_f&space;\left\lbrack&space;1\right\rbrack&space;\\&space;a_f&space;\left\lbrack&space;2\right\rbrack&space;\\&space;\vdots&space;\\&space;a_f&space;\left\lbrack&space;q\right\rbrack&space;&space;\end{array}\right\rbrack"/>
+$$
+\begin{bmatrix}
+a_f[0] & a_f[1] & \cdots & a_f[-(q-1)] \\
+a_f[1] & a_f[0] & \cdots & a_f[-(q-2)] \\
+\vdots & \vdots & \ddots & \vdots \\
+a_f[q-1] & a_f[q-2] & \cdots & a_f[0]
+\end{bmatrix}
+\begin{bmatrix} b[1] \\ b[2] \\ \vdots \\ b[q] \end{bmatrix}
+= -\begin{bmatrix} a_f[1] \\ a_f[2] \\ \vdots \\ a_f[q] \end{bmatrix}
+$$
 
   
 
-<img src="https://latex.codecogs.com/gif.latex?P_X^{\textrm{ARMA}}&space;\left(f\right)=\frac{\left|{{\mathit{\mathbf{e}}}_{\textrm{vect}}^{\mathit{\mathbf{b}}}&space;}^T&space;\mathit{\mathbf{b}}{\left|\right.}^2&space;\right.}{\;\left|{{\mathit{\mathbf{e}}}_{\textrm{vect}}^{\mathit{\mathbf{a}}}&space;}^T&space;\mathit{\mathbf{a}}{\left|\right.}^2&space;\right.}"/>
+$$P_X^\text{ARMA}(f) = \sigma^2\, \frac{\left| (\mathbf{e}_\text{vect}^{b})^{T} \mathbf{b} \right|^2}{\left| (\mathbf{e}_\text{vect}^{a})^{T} \mathbf{a} \right|^2}$$
 
 
-<img src="https://latex.codecogs.com/gif.latex?{\mathit{\mathbf{e}}}_{\textrm{vect}}^{\mathit{\mathbf{a}}}&space;={\left\lbrack&space;\begin{array}{cccc}&space;1&space;&&space;e^{-\textrm{j2}\pi&space;f\;}&space;&space;&&space;\cdots&space;&space;&&space;e^{-\textrm{j2}\pi&space;\textrm{fp}\;}&space;&space;\end{array}\right\rbrack&space;}^T"/> 
+$$\mathbf{e}_\text{vect}^{a} = \begin{bmatrix} 1 & e^{-j2\pi f} & \cdots & e^{-j2\pi f p} \end{bmatrix}^T$$ 
 
 
-<img src="https://latex.codecogs.com/gif.latex?{\mathit{\mathbf{e}}}_{\textrm{vect}}^b&space;={\left\lbrack&space;\begin{array}{cccc}&space;1&space;&&space;e^{-\textrm{j2}\pi&space;f\;}&space;&space;&&space;\cdots&space;&space;&&space;e^{-\textrm{j2}\pi&space;\textrm{fq}\;}&space;&space;\end{array}\right\rbrack&space;}^T"/>
+$$\mathbf{e}_\text{vect}^{b} = \begin{bmatrix} 1 & e^{-j2\pi f} & \cdots & e^{-j2\pi f q} \end{bmatrix}^T$$
 
 
 ```matlab:Code
@@ -432,7 +556,7 @@ grid minor;
 ```
 
 
-![figure_13.png](readme_images/figure_13.png)
+![figure_13.svg](readme_images/figure_13.svg)
 
 
 ```matlab:Code
@@ -446,7 +570,7 @@ colorbar;
 ```
 
 
-![figure_14.png](readme_images/figure_14.png)
+![figure_14.svg](readme_images/figure_14.svg)
 
 ## MUSIC PSD
 
@@ -465,7 +589,7 @@ grid minor;
 ```
 
 
-![figure_15.png](readme_images/figure_15.png)
+![figure_15.svg](readme_images/figure_15.svg)
 
 
 ```matlab:Code
@@ -479,7 +603,7 @@ colorbar;
 ```
 
 
-![figure_16.png](readme_images/figure_16.png)
+![figure_16.svg](readme_images/figure_16.svg)
 
 ## Min-Norm PSD
 
@@ -498,7 +622,7 @@ grid minor;
 ```
 
 
-![figure_17.png](readme_images/figure_17.png)
+![figure_17.svg](readme_images/figure_17.svg)
 
 
 ```matlab:Code
@@ -512,7 +636,7 @@ colorbar;
 ```
 
 
-![figure_18.png](readme_images/figure_18.png)
+![figure_18.svg](readme_images/figure_18.svg)
 
 # Comparison of All PSDs
 
@@ -537,5 +661,10 @@ grid on;
 ```
 
 
-![figure_19.png](readme_images/figure_19.png)
+![figure_19.svg](readme_images/figure_19.svg)
+
+# License
+
+This project is licensed under the GNU General Public License v3.0. See the
+[LICENSE](LICENSE) file for details.
 

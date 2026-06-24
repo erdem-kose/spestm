@@ -86,7 +86,7 @@ classdef spestm_lib
                 end
                 y=y(1:spestm_obj.Nf,:);
             end
-            F=spestm_obj.f;
+            F=spestm_obj.f*spestm_obj.fs;
         end
         
         function [y,F]=psd_blackmantukey(spestm_obj)  
@@ -133,7 +133,7 @@ classdef spestm_lib
             for i=1:spestm_obj.d
                 y(:,i)=sig2(i)./(eps+(abs(ctranspose(spestm_obj.e(1:(spestm_obj.p+1),:))*a(:,i)).^2)');
             end
-            F=spestm_obj.f;
+            F=spestm_obj.f*spestm_obj.fs;
         end
         
         function [y,F] = psd_capon(spestm_obj)
@@ -148,7 +148,7 @@ classdef spestm_lib
                 
                 Rxx_inv=pinv(Rxx);
 
-                Rxx_inv_g_1=power(Rxx_inv,spestm_obj.g-1);
+                Rxx_inv_g_1=Rxx_inv^(spestm_obj.g-1);
                 Rxx_inv_g=Rxx_inv*Rxx_inv_g_1;
                 
                 % PSD Estimation
@@ -159,7 +159,7 @@ classdef spestm_lib
                 end
             end
             y=abs(y);
-            F=spestm_obj.f;
+            F=spestm_obj.f*spestm_obj.fs;
         end
         
         function [y,F] = psd_armodcov(spestm_obj)
@@ -179,7 +179,7 @@ classdef spestm_lib
             for i=1:spestm_obj.d
                 y(:,i)=sig2(i)./(eps+(abs(ctranspose(spestm_obj.e(1:size(a{i},1),:))*a{i}).^2));
             end
-            F=spestm_obj.f;
+            F=spestm_obj.f*spestm_obj.fs;
         end
         
         function [y,F] = psd_arburg(spestm_obj)
@@ -199,7 +199,7 @@ classdef spestm_lib
             for i=1:spestm_obj.d
                 y(:,i)=sig2(i)./(eps+(abs(ctranspose(spestm_obj.e(1:(spestm_obj.p+1),:))*a(:,i)).^2)');
             end
-            F=spestm_obj.f;
+            F=spestm_obj.f*spestm_obj.fs;
         end
         
         function [y,F] = psd_arma(spestm_obj)
@@ -222,7 +222,7 @@ classdef spestm_lib
                 y_den=sig2(i)./(eps+(abs(ctranspose(spestm_obj.e(1:(spestm_obj.p+1),:))*a(:,i)).^2)');
                 y(:,i)=y_nom.*y_den;
             end
-            F=spestm_obj.f;
+            F=spestm_obj.f*spestm_obj.fs;
         end
 
         function [y,F] = psd_music(spestm_obj)
@@ -387,7 +387,7 @@ classdef spestm_lib
             % Parameter a Estimation
             u1=zeros(M+1,1); u1(1)=1;
 
-            Vn=v(:,(spestm_obj.p+1):M);
+            Vn=v(:,(spestm_obj.p+1):(M+1));
             Pn=Vn*ctranspose(Vn);
             lambda=ctranspose(u1)*Pn*u1;
 
